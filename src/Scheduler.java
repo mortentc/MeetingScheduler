@@ -1,11 +1,13 @@
+import java.util.Calendar;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Stream;
 
 public interface Scheduler {
     public Person CreatePerson(String name, String email) throws RuntimeException;
-    public Meeting CreateMeeting(Collection<Person> people, Date timeslot) throws RuntimeException;
-    public List<Meeting> ShowSchedule(String email);
-    public List<Meeting> ShowSchedule(Person person);
-    public List<Date> SuggestTimeslot(Collection<String> emails);
+    public Meeting CreateMeeting(Collection<Person> people, Calendar timeslot) throws RuntimeException;
+    public Stream<Meeting> ShowSchedule(String email);
+    public Stream<Meeting> ShowSchedule(Person person);
+    public Stream<Date> SuggestTimeslot(Collection<String> emails);
 }
