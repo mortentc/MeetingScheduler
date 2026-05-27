@@ -23,12 +23,14 @@ public class MeetingScheduler implements Scheduler {
     }
 
     private Map<String, List<UUID>> peopleMap;
+    private Map<String, String> nameMap;
     private Map<UUID, Meeting> meetingMap;
     private MeetingComparator meetingComp;
 
     public MeetingScheduler(){
         this.peopleMap = new ConcurrentHashMap<>();
         this.meetingMap = new HashMap<>();
+        this.nameMap = new HashMap<>();
         this.meetingComp = new MeetingComparator();
     }
 
@@ -44,7 +46,8 @@ public class MeetingScheduler implements Scheduler {
     @Override
     public Person CreatePerson(String name, String email) throws IllegalArgumentException {
         validateEmail(email, false);
-        this.peopleMap.put(email, new ArrayList<UUID>());
+        peopleMap.put(email, new ArrayList<UUID>());
+        nameMap.put(email, name);
         return new Person(name, email);
     }
 
@@ -77,10 +80,12 @@ public class MeetingScheduler implements Scheduler {
     }
 
     @Override
-    public Meeting CreateMeeting(Collection<Person> people, Calendar timeslot) throws RuntimeException {
+    public Meeting CreateMeeting(Collection<String> emails, Calendar timeslot) throws RuntimeException {
         validateTimeslot(timeslot);
-        people.forEach(p -> validateEmail(p.email(), true));
+        if(emails.isEmpty()) throw new IllegalArgumentException("Meeting with no person cannot be created.");
+        emails.forEach(e -> validateEmail(e, true));
 
+        List<Person> people = emails.parallelStream().map(e -> new Person(nameMap.get(e), e)).toList();
         Meeting m = new Meeting(timeslot, people);
         UUID uuid = UUID.randomUUID();
         meetingMap.put(uuid, m);
@@ -114,47 +119,51 @@ public class MeetingScheduler implements Scheduler {
         return SuggestTimeslot(emails, now, end);
     }
 
-    private void adjustTime(Calendar timeslot, int shift){
+    private Calendar adjustTime(Calendar timeslot, int shift){
         int
         hour = timeslot.get(Calendar.HOUR_OF_DAY),
-        date = timeslot.get(Calendar.DATE),
+        date = timeslot.get(Calendar.DAY_OF_MONTH),
         month = timeslot.get(Calendar.MONTH),
         year = timeslot.get(Calendar.YEAR);
-        timeslot.set(year, month, date, hour, 0, 0);
-        timeslot.add(Calendar.HOUR_OF_DAY, shift);
+        Calendar adjustedTime = (Calendar)timeslot.clone();
+        adjustedTime.set(year, month, date, hour, 0, 0);
+        adjustedTime.add(Calendar.HOUR_OF_DAY, shift);
+        return adjustedTime;
     }
 
     private Stream<Calendar> subspan(String email, Calendar after, Calendar before){
-        List<UUID> meetings = peopleMap.get(email);
-        UUID dummy1 = UUID.randomUUID(), dummy2 = UUID.randomUUID();
-        meetingMap.put(dummy1, new Meeting(after, new ArrayList<>()));
-        meetingMap.put(dummy2, new Meeting(before, new ArrayList<>()));
-        int startIdx = Collections.binarySearch(meetings, dummy1);
-        int endIdx = Collections.binarySearch(meetings, dummy2);
-        startIdx = (startIdx < 0) ? -(startIdx+1) : startIdx;
-        endIdx = (endIdx < 0) ? -(endIdx+1) : endIdx;
-        meetingMap.remove(dummy1); meetingMap.remove(dummy2);
-        return
-            meetings
-            .subList(startIdx, endIdx)
-            .parallelStream()
-            .map(id -> meetingMap.get(id).timeslot());
+        return peopleMap.get(email).stream().map(meetingMap::get).map(m -> m.timeslot());
+        // List<UUID> meetings = peopleMap.get(email);
+        // UUID dummy1 = UUID.randomUUID(), dummy2 = UUID.randomUUID();
+        // meetingMap.put(dummy1, new Meeting(after, new ArrayList<>()));
+        // meetingMap.put(dummy2, new Meeting(before, new ArrayList<>()));
+        // int startIdx = Collections.binarySearch(meetings, dummy1);
+        // int endIdx = Collections.binarySearch(meetings, dummy2);
+        // startIdx = (startIdx < 0) ? -(startIdx+1) : startIdx;
+        // endIdx = (endIdx < 0) ? -(endIdx+1) : endIdx;
+        // meetingMap.remove(dummy1); meetingMap.remove(dummy2);
+        // return
+        //     meetings
+        //     .subList(startIdx, endIdx)
+        //     .parallelStream()
+        //     .map(id -> meetingMap.get(id).timeslot())
+        //     .toList();
     }
 
     @Override
     public Stream<Calendar> SuggestTimeslot(Collection<String> emails, Calendar startAfter, Calendar endBefore) {
         emails.forEach(e -> validateEmail(e, true));
-        adjustTime(startAfter, 1); adjustTime(endBefore, -1);
-        if(startAfter.compareTo(endBefore) >= 0)
+        Calendar after = adjustTime(startAfter, 1), before = adjustTime(endBefore, -1);
+        if(after.compareTo(before) >= 0)
             throw new IllegalArgumentException("'endBefore' must indicate a time at least 2 hours later than 'startAfter'.");
         
         SortedSet<Calendar> suggestions = new ConcurrentSkipListSet<>();
-        while(startAfter.before(endBefore)){
-            suggestions.add((Calendar)startAfter.clone());
-            startAfter.add(Calendar.HOUR_OF_DAY, 1);
+        while(after.compareTo(before) <= 0){
+            suggestions.add((Calendar)after.clone());
+            after.add(Calendar.HOUR, 1);
         }
 
-        emails.parallelStream().forEach(e -> subspan(e, startAfter, endBefore).forEach(suggestions::remove));
+        emails.parallelStream().forEach(e -> subspan(e, after, before).forEach(suggestions::remove));
 
         return suggestions.stream();
     }
