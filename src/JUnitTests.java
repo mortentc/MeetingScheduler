@@ -121,6 +121,8 @@ public class JUnitTests {
             "Suggestions must be within the supplied time frame",
             suggestions.stream().allMatch(s -> s.after(after) && s.before(before)));
 
+        MatcherAssert.assertThat("At least one timeslot was suggested", suggestions.size() > 0);
+
         assertThrows("Time frame must have a positive length",
             IllegalArgumentException.class,
             () -> scheduler.SuggestTimeslot(both, before, after)
