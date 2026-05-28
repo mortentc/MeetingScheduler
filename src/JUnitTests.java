@@ -84,6 +84,17 @@ public class JUnitTests {
             "I should now have a meeting at the specified time",
             scheduler.ShowSchedule(me).findFirst().get().timeslot().compareTo(startTime) == 0
         );
+
+        startTime.add(Calendar.HOUR_OF_DAY, 1);
+        scheduler.CreateMeeting(emails, startTime);
+        startTime.add(Calendar.HOUR_OF_DAY, -2);
+        scheduler.CreateMeeting(emails, startTime);
+        MatcherAssert.assertThat(
+            "Schedule is sorted according to meeting times",
+            scheduler.ShowSchedule(me).map(m -> m.timeslot()).toList().equals(
+                scheduler.ShowSchedule(me).map(m -> m.timeslot()).sorted().toList()
+            )
+        );
     }
 
     @Test
@@ -106,13 +117,8 @@ public class JUnitTests {
 
         Calendar after = (Calendar)startTime1.clone(), before = (Calendar)startTime2.clone();
         after.add(Calendar.HOUR_OF_DAY, -2); before.add(Calendar.HOUR_OF_DAY, 2);
-
-        // System.err.println("After:"+after.get(Calendar.HOUR_OF_DAY));
-        // System.err.println("Before:"+before.get(Calendar.HOUR_OF_DAY));
         List<Calendar> suggestions = scheduler.SuggestTimeslot(both, after, before).toList();
-        // suggestions.forEach(c -> System.err.println(c.get(Calendar.HOUR_OF_DAY)));
 
-        
         MatcherAssert.assertThat(
             "Suggestions must not conflict with prior meetings",
             suggestions.stream().allMatch(s -> s.compareTo(startTime1) != 0 && s.compareTo(startTime2) != 0)

@@ -86,7 +86,7 @@ public class MeetingScheduler implements Scheduler {
         emails.forEach(e -> validateEmail(e, true));
 
         List<Person> people = emails.parallelStream().map(e -> new Person(nameMap.get(e), e)).toList();
-        Meeting m = new Meeting(timeslot, people);
+        Meeting m = new Meeting((Calendar)timeslot.clone(), people);
         UUID uuid = UUID.randomUUID();
         meetingMap.put(uuid, m);
 
@@ -132,22 +132,20 @@ public class MeetingScheduler implements Scheduler {
     }
 
     private Stream<Calendar> subspan(String email, Calendar after, Calendar before){
-        return peopleMap.get(email).stream().map(meetingMap::get).map(m -> m.timeslot());
-        // List<UUID> meetings = peopleMap.get(email);
-        // UUID dummy1 = UUID.randomUUID(), dummy2 = UUID.randomUUID();
-        // meetingMap.put(dummy1, new Meeting(after, new ArrayList<>()));
-        // meetingMap.put(dummy2, new Meeting(before, new ArrayList<>()));
-        // int startIdx = Collections.binarySearch(meetings, dummy1);
-        // int endIdx = Collections.binarySearch(meetings, dummy2);
-        // startIdx = (startIdx < 0) ? -(startIdx+1) : startIdx;
-        // endIdx = (endIdx < 0) ? -(endIdx+1) : endIdx;
-        // meetingMap.remove(dummy1); meetingMap.remove(dummy2);
-        // return
-        //     meetings
-        //     .subList(startIdx, endIdx)
-        //     .parallelStream()
-        //     .map(id -> meetingMap.get(id).timeslot())
-        //     .toList();
+        List<UUID> meetings = peopleMap.get(email);
+        UUID dummy1 = UUID.randomUUID(), dummy2 = UUID.randomUUID();
+        meetingMap.put(dummy1, new Meeting(after, new ArrayList<>()));
+        meetingMap.put(dummy2, new Meeting(before, new ArrayList<>()));
+        int startIdx = Collections.binarySearch(meetings, dummy1, meetingComp);
+        int endIdx = Collections.binarySearch(meetings, dummy2, meetingComp);
+        startIdx = (startIdx < 0) ? -(startIdx+1) : startIdx;
+        endIdx = (endIdx < 0) ? -(endIdx+1) : endIdx+1;
+        meetingMap.remove(dummy1); meetingMap.remove(dummy2);
+        return
+            meetings
+            .subList(startIdx, endIdx)
+            .parallelStream()
+            .map(id -> meetingMap.get(id).timeslot());
     }
 
     @Override
@@ -158,11 +156,11 @@ public class MeetingScheduler implements Scheduler {
             throw new IllegalArgumentException("'endBefore' must indicate a time at least 2 hours later than 'startAfter'.");
         
         SortedSet<Calendar> suggestions = new ConcurrentSkipListSet<>();
-        while(after.compareTo(before) <= 0){
-            suggestions.add((Calendar)after.clone());
-            after.add(Calendar.HOUR, 1);
+        Calendar cur = (Calendar)after.clone();
+        while(cur.compareTo(before) <= 0){
+            suggestions.add((Calendar)cur.clone());
+            cur.add(Calendar.HOUR, 1);
         }
-
         emails.parallelStream().forEach(e -> subspan(e, after, before).forEach(suggestions::remove));
 
         return suggestions.stream();
